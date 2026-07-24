@@ -288,10 +288,10 @@ University of Science and Technology of Southern Philippines (USTP)
 
 Contributions, suggestions, and improvements are welcome!
 
-Please read the [CONTRIBUTING.md](https://github.com/rheillunio2-byte/PomodoroPA/blob/main/docs/CONTRIBUTING.md) guide before submitting pull requests or feature requests.
+Please read the [CONTRIBUTING.md](https://github.com/rheillunio2-byte/PomodoroPA/tree/main?tab=contributing-ov-file) guide before submitting pull requests or feature requests.
 
 ---
 
 # 📄 License
 
-This project is licensed under the **MIT License**. See the [LICENSE](https://github.com/rheillunio2-byte/PomodoroPA/blob/main/LICENSE) file for more details.
+This project is licensed under the **MIT License**. See the [LICENSE](https://github.com/rheillunio2-byte/PomodoroPA/tree/main?tab=MIT-1-ov-file) file for more details.
