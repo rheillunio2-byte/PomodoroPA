@@ -288,7 +288,7 @@ University of Science and Technology of Southern Philippines (USTP)
 
 Contributions, suggestions, and improvements are welcome!
 
-Please read the **CONTRIBUTING.md** guide before submitting pull requests or feature requests.
+Please read the [CONTRIBUTING.md](https://github.com/rheillunio2-byte/PomodoroPA/blob/main/docs/CONTRIBUTING.md) guide before submitting pull requests or feature requests.
 
 ---
 
