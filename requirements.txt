@@ -1,0 +1,4 @@
+customtkinter>=5.2.2
+Pillow>=10.1.0
+# Optional: native desktop notifications (the app works without it)
+plyer>=2.1.0
