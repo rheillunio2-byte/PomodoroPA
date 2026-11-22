@@ -1,9 +1,8 @@
+"""FocusFlow entry point:  python app.py"""
 from ui.main_window import MainWindow
-from services.task_service import initialize_tasks
 
-initialize_tasks()
 
-def main():
+def main() -> None:
     app = MainWindow()
     app.mainloop()
 

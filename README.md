@@ -1,276 +1,217 @@
 # 🍅 FocusFlow
 
-![Python](https://img.shields.io/badge/Python-3.14-blue?logo=python)
+![Version](https://img.shields.io/badge/version-2.0.0-ff5a43)
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
 ![CustomTkinter](https://img.shields.io/badge/GUI-CustomTkinter-green)
 ![SQLite](https://img.shields.io/badge/Database-SQLite-blue)
-![Matplotlib](https://img.shields.io/badge/Charts-Matplotlib-orange)
+![Tests](https://img.shields.io/badge/tests-62%20passing-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-A **Python-based Pomodoro productivity application** designed to help students and professionals improve focus, manage tasks, and build productive work habits using the Pomodoro Technique.
-
-FocusFlow combines time management, task organization, productivity analytics, calendar scheduling, AI-powered insights, and customizable settings into one modern desktop application.
+A **Python Pomodoro productivity app** for students and professionals: focus timer, task manager, calendar, statistics and history in one fast, animated desktop application. Everything is stored locally in SQLite. There are no accounts and nothing leaves your machine.
 
 ---
 
-# 🖥️ Application Preview
+# 🖥️ Preview
+
+FocusFlow 2.0 is navigated with a **magnifying dock** and titles that animate letter by letter. These renders come straight from the app's own drawing code (`python tools/render_previews.py`):
+
+<p align="center">
+  <img src="docs/previews/dock-dark.png" width="640" alt="The dock, dark theme"><br>
+  <img src="docs/previews/dock-light.png" width="640" alt="The dock, light theme">
+</p>
+
+<p align="center">
+  <img src="docs/previews/timer-rings-dark.png" width="640" alt="Timer ring in focus, short-break and long-break colours"><br>
+  <sub>The timer ring: tomato = focus, leaf green = short break, sky blue = long break</sub>
+</p>
+
+<p align="center">
+  <img src="docs/previews/rotating-text-dark.png" width="760" alt="RotatingText effects: slide, flip, blur, scale, drop"><br>
+  <sub>RotatingText frames – slide · flip · blur · scale · drop</sub>
+</p>
+
+<details>
+<summary>Screenshots of the v1.0 interface (legacy)</summary>
 
 <table>
   <tr>
-    <td align="center">
-      <img src="images/Dashboard.png" width="400">
-      <br>
-      <b>Dashboard</b>
-    </td>
-    <td align="center">
-      <img src="images/Pomodoro.png" width="400">
-      <br>
-      <b>Pomodoro Timer</b>
-    </td>
+    <td align="center"><img src="images/Dashboard.png" width="400"><br><b>Dashboard</b></td>
+    <td align="center"><img src="images/Pomodoro.png" width="400"><br><b>Pomodoro Timer</b></td>
   </tr>
-
   <tr>
-    <td align="center">
-      <img src="images/Tasks.png" width="400">
-      <br>
-      <b>Task Manager</b>
-    </td>
-    <td align="center">
-      <img src="images/Statistics 1.png" width="400">
-      <br>
-      <b>Statistics Overview</b>
-    </td>
+    <td align="center"><img src="images/Tasks.png" width="400"><br><b>Task Manager</b></td>
+    <td align="center"><img src="images/Statistics 1.png" width="400"><br><b>Statistics</b></td>
   </tr>
-
   <tr>
-    <td align="center">
-      <img src="images/Statistics 2.png" width="400">
-      <br>
-      <b>Statistics Analytics</b>
-    </td>
-    <td align="center">
-      <img src="images/Calendar.png" width="400">
-      <br>
-      <b>Calendar</b>
-    </td>
-  </tr>
-
-  <tr>
-    <td align="center">
-      <img src="images/History.png" width="400">
-      <br>
-      <b>Session History</b>
-    </td>
-    <td align="center">
-      <img src="images/Settings.png" width="400">
-      <br>
-      <b>Settings</b>
-    </td>
-  </tr>
-
-  <tr>
-    <td align="center">
-      <img src="images/About 1.png" width="400">
-      <br>
-      <b>About (Overview)</b>
-    </td>
-    <td align="center">
-      <img src="images/About 2.png" width="400">
-      <br>
-      <b>About (Developer Information)</b>
-    </td>
+    <td align="center"><img src="images/Calendar.png" width="400"><br><b>Calendar</b></td>
+    <td align="center"><img src="images/History.png" width="400"><br><b>History</b></td>
   </tr>
 </table>
 
----
-
-# 📌 Overview
-
-FocusFlow is a desktop productivity application developed using **Python** and **CustomTkinter**.
-
-It is built around the **Pomodoro Technique**, enabling users to stay focused, organize daily tasks, monitor productivity, and analyze work patterns through interactive dashboards and statistics.
-
-The application is designed to promote effective time management while providing a clean, intuitive, and modern user experience.
+These show the previous sidebar layout; v2.0 replaces it with the dock and a new visual design.
+</details>
 
 ---
 
-# ✨ Features
+# ✨ What's new in 2.0
 
-✅ Customizable Pomodoro Timer
-
-✅ Task Management System
-
-✅ Productivity Dashboard
-
-✅ Interactive Statistics & Charts
-
-✅ Calendar-Based Task Planner
-
-✅ Session History Tracking
-
-✅ AI Productivity Insights
-
-✅ Achievement & Streak Tracking
-
-✅ Light/Dark Mode Support
-
-✅ Custom Notification Settings
-
-✅ SQLite Database Storage
-
-✅ Desktop Application built with CustomTkinter
+* **Dock navigation** with spring-physics magnification, hop-on-click, badges (open tasks, running timer), tooltips and right-click menus.
+* **Animated text**: page titles and the dashboard headline use a letter-by-letter *RotatingText* (slide, flip, blur, scale and drop effects).
+* **Cursor animation** (Windows): a comet trail, a magnetic ring that grows over clickable things, and click ripples.
+* **A new timer**: a glowing progress ring in the colour of the current phase, confetti when you finish, the countdown in the window title, and keyboard shortcuts.
+* **Native animated charts**: bars, donut and a 12-week activity heatmap. They replace Matplotlib and follow the theme.
+* **Ctrl + K command palette**: jump to any page, run an action or find a task.
+* **A real light theme**, a "System" option, and settings that persist.
+* **Better task handling**: validated due dates with quick-pick chips, reopen finished tasks, status/category/priority filters.
+* **A rewritten, tested core**: see the [CHANGELOG](CHANGELOG.md) for the bugs fixed (including a timer that ran at double speed after pausing).
 
 ---
 
-# 🛠️ Technologies Used
+# 📌 Features
 
-## Programming Language
+✅ Pomodoro timer with focus, short-break and long-break cycles, auto-start and a daily goal
 
-* Python 3.x
+✅ Task manager with categories, priorities, due dates and per-task session counts
 
-## GUI Framework
+✅ Dashboard with today's goal, weekly chart, up-next list and achievements with progress
 
-* CustomTkinter
+✅ Statistics for Today / Week / Month / All, a category breakdown, an activity heatmap and local insights
 
-## Database
+✅ Calendar planner with priority dots and one-click "add task for this day"
 
-* SQLite
+✅ Session history grouped by day, searchable and filterable
 
-## Data Visualization
+✅ Achievement and streak tracking
 
-* Matplotlib
+✅ Dark, Light or System theme; animations can be switched off
 
-## Calendar
+✅ Desktop notifications and sounds (both optional)
 
-* TkCalendar
+✅ CSV export of sessions and tasks
 
-## Libraries
+✅ SQLite storage, with automatic upgrade of v1.x databases
 
-* `sqlite3`
-* `datetime`
-* `matplotlib`
-* `tkcalendar`
-* `Pillow`
-* `os`
-* `json`
+> **About "insights":** the suggestions on the Statistics page are simple, transparent rules over your own history. They run locally. No AI service is involved.
 
-## Development Tools
+---
 
-* PyCharm
-* PyInstaller
+# ⌨️ Keyboard shortcuts
+
+| Keys | Action |
+|------|--------|
+| `Ctrl + K` | Command palette |
+| `Ctrl + 1` … `Ctrl + 8` | Switch page |
+| `Ctrl + N` | New task |
+| `Space` | Start / pause the timer (on the Pomodoro page) |
+| `R` / `S` | Reset / skip the current phase |
 
 ---
 
 # 🚀 Installation
 
-## 1. Clone the repository
+Requires **Python 3.10 or newer** (developed and tested on 3.12).
 
 ```bash
-git clone https://github.com/rheillunio2-byte/FocusFlow.git
-```
-
-## 2. Navigate to the project
-
-```bash
-cd FocusFlow
-```
-
-## 3. Install dependencies
-
-```bash
+git clone https://github.com/rheillunio2-byte/PomodoroPA.git
+cd PomodoroPA
+python -m venv .venv
+.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-## 4. Run the application
-
-```bash
 python app.py
 ```
 
----
+`plyer` (desktop notifications) is optional. If it can't be installed, FocusFlow simply skips system notifications and keeps showing in-app toasts.
 
-# 📖 How It Works
+**Where is my data?** In `database/focusflow.db` next to the app when running from source, or in `%APPDATA%\FocusFlow` for a packaged build. *Settings → Your data* can open the folder, export CSV files or reset everything.
 
-1. Create and organize daily tasks.
-2. Start a Pomodoro focus session.
-3. Complete work and break cycles.
-4. Sessions are automatically saved.
-5. Productivity statistics are generated.
-6. AI analyzes your productivity patterns.
-7. Calendar and History keep track of your progress over time.
+### Platform notes
 
----
+| Feature | Windows | macOS / Linux |
+|---------|:------:|:-------------:|
+| Everything except the items below | ✅ | ✅ |
+| Cursor animation overlay | ✅ | not available |
+| Sounds | ✅ | macOS only (silent on Linux) |
 
-# 📊 Core Modules
+### Build an executable (optional)
 
-* 🍅 Pomodoro Timer
-* ✅ Task Manager
-* 📊 Statistics
-* 📅 Calendar
-* 📜 History
-* 🤖 AI Insights
-* ⚙️ Settings
-* ℹ️ About
-
----
-
-# 📂 Project Structure
-
-```text
-FocusFlow/
-│
-├── app.py
-├── database/
-│   └── focusflow.db
-│
-├── services/
-│
-├── ui/
-│
-├── assets/
-│
-├── Images/
-│   ├── Dashboard
-│   ├── Pomodoro
-│   ├── Tasks
-│   ├── Statistics
-│   ├── Calendar
-│   ├── History
-│   ├── Settings
-│   └── About
-│
-├── README.md
-├── LICENSE
-└── requirements.txt
+```bash
+pip install pyinstaller
+pyinstaller --noconfirm --windowed --name FocusFlow --collect-all customtkinter app.py
 ```
 
 ---
 
-# 📈 Productivity Features
+# 🧪 Running the tests
 
-* Daily Focus Tracking
-* Weekly Productivity Charts
-* Monthly Productivity Trends
-* Category Distribution Charts
-* Session History
-* Current Streak Tracking
-* Achievement System
-* AI-Based Productivity Recommendations
+The test-suite needs nothing beyond the standard library and Pillow, and **no display**: the UI tests run against a small in-memory stand-in for Tk (`tests/fake_tk.py`).
+
+```bash
+python -m unittest discover -s tests -t .
+```
+
+It covers the services against a throw-away database (including migrating a v1 database), the timer state machine, the Dock and RotatingText physics and rendering, the colour palette's WCAG contrast, and a headless walk through every page, the dock, the timer, the settings and the cursor overlay.
+
+> The headless tests prove the wiring and logic, not how things look. If you change visuals, run the app and try it.
 
 ---
 
-# 🔮 Future Improvements
+# 📂 Project structure
 
-Planned features include:
+```text
+PomodoroPA/
+├── app.py                  # entry point
+├── config.py               # name/version, paths, task vocabularies
+├── requirements.txt
+├── database/               # focusflow.db (created on first run)
+├── services/               # business logic – no UI imports
+│   ├── db.py               #   the one place that opens SQLite + migrations
+│   ├── pomodoro_service.py #   timer state machine (clock-injectable)
+│   ├── task_service.py  settings_service.py  session_service.py
+│   ├── statistics_service.py  chart_service.py  dashboard_service.py
+│   ├── achievement_service.py  streak_service.py  insight_service.py
+│   ├── calendar_service.py  history_service.py  export_service.py
+│   └── notification_service.py  sound_service.py  data_service.py
+├── ui/
+│   ├── main_window.py      # shell: header, pages, dock, toasts, shortcuts
+│   ├── *_page.py           # dashboard, pomodoro, tasks, statistics, calendar, history, settings, about
+│   ├── theme.py            # light/dark state, fonts, DPI scale
+│   ├── anim.py             # tween + frame-loop scheduler (honours "Animations")
+│   ├── engine/             # PURE Python (no Tk): physics + Pillow rendering
+│   │   ├── dock_engine.py  dock_render.py      # Dock
+│   │   ├── text_engine.py                      # RotatingText
+│   │   ├── ring_render.py  icons.py  logo.py  palette.py  motion.py  colors.py  fonts.py
+│   └── widgets/            # thin Tk wrappers that blit engine frames
+│       ├── dock.py  rotating_text.py  ring.py  charts.py  month_grid.py
+│       ├── cursor_fx.py  command_palette.py  components.py
+├── tests/                  # unittest suite + fake_tk.py
+├── tools/render_previews.py
+├── docs/                   # CONTRIBUTING.md and generated previews
+├── images/                 # legacy v1 screenshots
+├── CHANGELOG.md  LICENSE  README.md
+```
 
-* Cloud synchronization
-* User accounts
+---
+
+# 🧩 How the Dock and RotatingText work
+
+Both started life as [React Bits](https://reactbits.dev) components (`<Dock />` and `<RotatingText />`). React can't run inside a CustomTkinter window, so they were **re-implemented natively in Python** rather than embedded: same props, effects, spring constants and easing curves, but computed in `ui/engine/` and drawn with Pillow.
+
+* The engines are plain Python, which is why they can be unit-tested and previewed without a display.
+* Each widget is a small canvas that shows one Pillow frame per tick.
+* "Animations" in Settings turns all of it into instant state changes.
+
+React Bits is a separate project with its own licence; check its terms if you reuse the original components.
+
+---
+
+# 🔮 Future improvements
+
+* Cloud synchronisation and optional accounts
 * Focus music integration
-* Desktop notifications
-* Mobile companion app
-* Team productivity dashboard
-* AI-generated weekly productivity reports
+* Export statistics to PDF and Excel (CSV export already exists)
 * Goal tracking and habit analytics
-* Export statistics to PDF and Excel
+* Weekly productivity reports
+* Mobile companion app
 
 ---
 
@@ -286,12 +227,10 @@ University of Science and Technology of Southern Philippines (USTP)
 
 # 🤝 Contributing
 
-Contributions, suggestions, and improvements are welcome!
-
-Please read the [CONTRIBUTING.md](https://github.com/rheillunio2-byte/PomodoroPA/tree/main?tab=contributing-ov-file) guide before submitting pull requests or feature requests.
+Contributions, suggestions and improvements are welcome! Please read [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) before opening a pull request.
 
 ---
 
 # 📄 License
 
-This project is licensed under the **MIT License**. See the [LICENSE](https://github.com/rheillunio2-byte/PomodoroPA/tree/main?tab=MIT-1-ov-file) file for more details.
+Released under the **MIT License**. See [LICENSE](LICENSE) for details.
