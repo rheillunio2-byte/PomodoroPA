@@ -1,46 +1,27 @@
-import sqlite3
+"""Persist finished Pomodoro sessions."""
+from __future__ import annotations
+
 from datetime import datetime
 
-DB = "database/focusflow.db"
+from services import db
 
-def save_session(minutes, session_type):
+WORK, SHORT_BREAK, LONG_BREAK = "Work", "Short Break", "Long Break"
 
-    connection = sqlite3.connect(DB)
 
-    cursor = connection.cursor()
+def save_session(minutes: int, session_type: str = WORK, task_id: int | None = None,
+                 when: datetime | None = None) -> None:
+    when = when or datetime.now()
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO sessions (completed_at, minutes, session_type, task_id) VALUES (?,?,?,?)",
+            (when.strftime("%Y-%m-%d %H:%M:%S"), int(minutes), session_type, task_id),
+        )
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS sessions(
 
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-        completed_at TEXT,
-
-        minutes INTEGER,
-
-        session_type TEXT DEFAULT 'Work'
-
-    )
-    """)
-
-    cursor.execute("""
-    INSERT INTO sessions
-    (
-        completed_at,
-        minutes,
-        session_type
-    )
-    VALUES (?,?,?)
-    """,(
-
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-
-        minutes,
-
-        session_type
-
-    ))
-
-    connection.commit()
-
-    connection.close()
+def work_sessions_today() -> int:
+    today = datetime.now().strftime("%Y-%m-%d")
+    with db.connect() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM sessions WHERE session_type='Work' AND substr(completed_at,1,10)=?",
+            (today,),
+        ).fetchone()[0]
