@@ -1,502 +1,253 @@
-import customtkinter as ctk
+"""Task manager."""
+from __future__ import annotations
+
+from datetime import date, timedelta
 from tkinter import messagebox
 
-from services.task_service import (
-    add_task,
-    get_tasks,
-    complete_task,
-    delete_task,
-    update_task
-)
+import customtkinter as ctk
+
+import config
+from services import task_service
+from ui import theme
+from ui.pages_base import BasePage
+from ui.widgets.components import Button, Card, Pill, empty_state, icon, label
+
+PRIORITY_TOKEN = {"Urgent": "plum", "High": "danger", "Medium": "sun", "Low": "muted"}
 
 
-class TasksPage(ctk.CTkFrame):
+def menu(parent, values, width=120, **kw) -> ctk.CTkOptionMenu:
+    return ctk.CTkOptionMenu(parent, values=values, width=width, height=36, corner_radius=10,
+                             fg_color=theme.pair("surface2"), button_color=theme.pair("surface3"),
+                             button_hover_color=theme.pair("border"), text_color=theme.pair("text"),
+                             dropdown_fg_color=theme.pair("surface2"), dropdown_text_color=theme.pair("text"),
+                             dropdown_hover_color=theme.pair("surface3"), font=theme.font(12), **kw)
+
+
+def entry(parent, placeholder="", width=0, **kw) -> ctk.CTkEntry:
+    return ctk.CTkEntry(parent, placeholder_text=placeholder, height=36, corner_radius=10, border_width=1,
+                        border_color=theme.pair("border"), fg_color=theme.pair("surface2"),
+                        text_color=theme.pair("text"), font=theme.font(12), **({"width": width} if width else {}), **kw)
+
+
+class TasksPage(BasePage):
+    title = "Tasks"
 
     def __init__(self, parent, app):
+        super().__init__(parent, app)
+        self._search_job = None
 
-        super().__init__(parent)
+        # ---- add form -----------------------------------------------------------
+        form = Card(self)
+        form.pack(fill="x", pady=(0, 10))
+        row = ctk.CTkFrame(form, fg_color="transparent")
+        row.pack(fill="x", padx=14, pady=(14, 6))
+        self.title_entry = entry(row, "What needs doing?")
+        self.title_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.category = menu(row, config.CATEGORIES, 112)
+        self.category.pack(side="left", padx=4)
+        self.priority = menu(row, config.PRIORITIES, 104)
+        self.priority.set("Medium")
+        self.priority.pack(side="left", padx=4)
+        self.due_entry = entry(row, "Due: YYYY-MM-DD", 150)
+        self.due_entry.pack(side="left", padx=4)
+        Button(row, "Add task", self.add_new_task, kind="primary", icon_name="plus", width=120).pack(side="left", padx=(8, 0))
+        quick = ctk.CTkFrame(form, fg_color="transparent")
+        quick.pack(fill="x", padx=14, pady=(0, 12))
+        label(quick, "Quick due date:", 11, tone="muted").pack(side="left", padx=(2, 8))
+        for text, days in (("Today", 0), ("Tomorrow", 1), ("In a week", 7)):
+            Button(quick, text, lambda d=days: self._set_due(d), kind="ghost", width=90, height=28).pack(side="left", padx=3)
+        self.form_error = label(quick, "", 11, tone="danger")
+        self.form_error.pack(side="right", padx=6)
+        self.title_entry.bind("<Return>", lambda e: self.add_new_task())
+        self.due_entry.bind("<Return>", lambda e: self.add_new_task())
 
-        self.app = app
+        # ---- filters ------------------------------------------------------------
+        bar = ctk.CTkFrame(self, fg_color="transparent")
+        bar.pack(fill="x", pady=(0, 8))
+        self.search_entry = entry(bar, "Search tasks")
+        self.search_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.search_entry.bind("<KeyRelease>", lambda e: self._debounced_load())
+        self.status = ctk.CTkSegmentedButton(
+            bar, values=["All", "Active", "Done"], command=lambda v: self.load_tasks(), height=34, corner_radius=10,
+            font=theme.font(12, "bold"), fg_color=theme.pair("surface2"), unselected_color=theme.pair("surface2"),
+            unselected_hover_color=theme.pair("surface3"), selected_color=theme.pair("tomato"),
+            selected_hover_color=theme.pair("tomato_hi"), text_color=theme.pair("text"))
+        self.status.set("Active")
+        self.status.pack(side="left", padx=4)
+        self.category_filter = menu(bar, ["All"] + config.CATEGORIES, 118, command=lambda v: self.load_tasks())
+        self.category_filter.pack(side="left", padx=4)
+        self.priority_filter = menu(bar, ["All"] + config.PRIORITIES, 108, command=lambda v: self.load_tasks())
+        self.priority_filter.pack(side="left", padx=(4, 0))
 
-        # ======================================================
-        # TITLE
-        # ======================================================
+        self.container = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.container.pack(fill="both", expand=True)
 
-        title = ctk.CTkLabel(
-            self,
-            text='📝 Task Manager',
-            font=('Segoe UI', 30, 'bold')
-        )
+    # ----------------------------------------------------------------- lifecycle
 
-        title.pack(pady=(20, 15))
-
-        # ======================================================
-        # ADD TASK AREA
-        # ======================================================
-
-        input_frame = ctk.CTkFrame(self)
-
-        input_frame.pack(
-            fill='x',
-            padx=20,
-            pady=(0, 10)
-        )
-
-        self.title_entry = ctk.CTkEntry(
-            input_frame,
-            placeholder_text='Task title...'
-        )
-
-        self.title_entry.pack(
-            side='left',
-            expand=True,
-            fill='x',
-            padx=10,
-            pady=10
-        )
-
-        self.category = ctk.CTkComboBox(
-            input_frame,
-            values=['Study', 'Work', 'Personal', 'Health'],
-            width=140
-        )
-
-        self.category.set('Study')
-
-        self.category.pack(side='left', padx=5)
-
-        self.priority = ctk.CTkComboBox(
-            input_frame,
-            values=['Low', 'Medium', 'High', 'Urgent'],
-            width=140
-        )
-
-        self.priority.set('Medium')
-
-        self.priority.pack(side='left', padx=5)
-
-        self.date_entry = ctk.CTkEntry(
-            input_frame,
-            width=140,
-            placeholder_text='YYYY-MM-DD'
-        )
-
-        self.date_entry.pack(side='left', padx=5)
-
-        add_button = ctk.CTkButton(
-            input_frame,
-            text='➕ Add Task',
-            width=120,
-            command=self.add_new_task
-        )
-
-        add_button.pack(side='left', padx=10)
-
-        # ======================================================
-        # SEARCH & FILTERS
-        # ======================================================
-
-        filter_frame = ctk.CTkFrame(self)
-
-        filter_frame.pack(
-            fill='x',
-            padx=20,
-            pady=(0, 10)
-        )
-
-        self.search_entry = ctk.CTkEntry(
-            filter_frame,
-            placeholder_text='🔍 Search tasks...'
-        )
-
-        self.search_entry.pack(
-            side='left',
-            fill='x',
-            expand=True,
-            padx=10,
-            pady=10
-        )
-
-        self.search_entry.bind(
-            '<KeyRelease>',
-            lambda event: self.load_tasks()
-        )
-
-        self.category_filter = ctk.CTkComboBox(
-            filter_frame,
-            values=['All', 'Study', 'Work', 'Personal', 'Health'],
-            width=130
-        )
-
-        self.category_filter.set('All')
-
-        self.category_filter.pack(side='left', padx=5)
-
-        self.category_filter.configure(
-            command=lambda value: self.load_tasks()
-        )
-
-        self.priority_filter = ctk.CTkComboBox(
-            filter_frame,
-            values=['All', 'Low', 'Medium', 'High', 'Urgent'],
-            width=130
-        )
-
-        self.priority_filter.set('All')
-
-        self.priority_filter.pack(side='left', padx=5)
-
-        self.priority_filter.configure(
-            command=lambda value: self.load_tasks()
-        )
-
-        # ======================================================
-        # TASK LIST
-        # ======================================================
-
-        self.task_container = ctk.CTkScrollableFrame(
-            self,
-            fg_color='transparent'
-        )
-
-        self.task_container.pack(
-            fill='both',
-            expand=True,
-            padx=20,
-            pady=(5, 20)
-        )
-
+    def on_show(self) -> None:
         self.load_tasks()
 
-    # ======================================================
-    # ADD TASK
-    # ======================================================
+    def focus_new_task(self) -> None:
+        self.title_entry.focus_set()
 
-    def add_new_task(self):
+    def set_search(self, text: str) -> None:
+        self.status.set("All")
+        self.search_entry.delete(0, "end")
+        self.search_entry.insert(0, text)
+        self.load_tasks()
 
-        title = self.title_entry.get().strip()
+    def prefill_due(self, day: str) -> None:
+        self.due_entry.delete(0, "end")
+        self.due_entry.insert(0, day)
+        self.title_entry.focus_set()
 
-        if title == '':
-            messagebox.showwarning(
-                'Missing Title',
-                'Please enter a task title.'
-            )
+    # ------------------------------------------------------------------- actions
+
+    def _set_due(self, days: int) -> None:
+        self.prefill_due((date.today() + timedelta(days=days)).isoformat())
+
+    def _debounced_load(self) -> None:
+        if self._search_job:
+            self.after_cancel(self._search_job)
+        self._search_job = self.after(160, self.load_tasks)
+
+    def add_new_task(self) -> None:
+        try:
+            task_service.add_task(self.title_entry.get(), self.category.get(), self.priority.get(), self.due_entry.get())
+        except ValueError as error:
+            self.form_error.configure(text=str(error))
             return
-
-        add_task(
-            title,
-            self.category.get(),
-            self.priority.get(),
-            self.date_entry.get()
-        )
-
-        self.title_entry.delete(0, 'end')
-        self.date_entry.delete(0, 'end')
-
-        self.category.set('Study')
-        self.priority.set('Medium')
-
+        self.form_error.configure(text="")
+        self.title_entry.delete(0, "end")
+        self.due_entry.delete(0, "end")
+        self.priority.set("Medium")
+        self.status.set("Active" if self.status.get() == "Done" else self.status.get())
         self.load_tasks()
+        self.app.refresh_badges()
+        self.app.toast("Task added", "success")
 
-    # ======================================================
-    # LOAD TASKS
-    # ======================================================
+    def toggle_done(self, task_id: int, completed: bool) -> None:
+        (task_service.reopen_task if completed else task_service.complete_task)(task_id)
+        self.load_tasks()
+        self.app.refresh_badges()
+        if not completed:
+            self.app.toast("Task completed", "success")
 
-    def load_tasks(self):
-
-        for widget in self.task_container.winfo_children():
-            widget.destroy()
-
-        tasks = get_tasks()
-
-        search = self.search_entry.get().lower()
-        selected_category = self.category_filter.get()
-        selected_priority = self.priority_filter.get()
-
-        priority_colors = {
-            'Low': '#808080',
-            'Medium': '#f39c12',
-            'High': '#e74c3c',
-            'Urgent': '#8e44ad'
-        }
-
-        visible = 0
-
-        for task in tasks:
-
-            task_id, title, category, priority, due, completed, pomodoros = task
-
-            # ---------------- SEARCH ----------------
-
-            if search and search not in title.lower():
-                continue
-
-            # ---------------- CATEGORY FILTER ----------------
-
-            if selected_category != 'All' and category != selected_category:
-                continue
-
-            # ---------------- PRIORITY FILTER ----------------
-
-            if selected_priority != 'All' and priority != selected_priority:
-                continue
-
-            visible += 1
-
-            # ==================================================
-            # CARD
-            # ==================================================
-
-            card = ctk.CTkFrame(
-                self.task_container,
-                corner_radius=15
-            )
-
-            card.pack(
-                fill='x',
-                padx=8,
-                pady=8
-            )
-
-            # ---------------- TOP ----------------
-
-            top = ctk.CTkFrame(
-                card,
-                fg_color='transparent'
-            )
-
-            top.pack(
-                fill='x',
-                padx=15,
-                pady=(12, 5)
-            )
-
-            title_label = ctk.CTkLabel(
-                top,
-                text=f'{'✅' if completed else '⭕'} {title}',
-                font=('Segoe UI', 18, 'bold')
-            )
-
-            title_label.pack(side='left')
-
-            badge = ctk.CTkLabel(
-                top,
-                text=priority.upper(),
-                width=90,
-                corner_radius=8,
-                fg_color=priority_colors.get(priority, '#808080')
-            )
-
-            badge.pack(side='right')
-
-            # ---------------- INFO ----------------
-
-            info = ctk.CTkLabel(
-                card,
-                text=(
-                    f"📂 {category}"
-                    f"     📅 {due}"
-                    f"     🍅 {pomodoros}"
-                ),
-                font=("Segoe UI",13)
-            )
-
-            info.pack(anchor='w', padx=15)
-
-            # ---------------- POMODOROS ----------------
-
-            pomodoro_label = ctk.CTkLabel(
-                card,
-                text=f'🍅 Pomodoros: {pomodoros}',
-                font=('Segoe UI', 13, 'bold'),
-                text_color='#16a34a'
-            )
-
-            pomodoro_label.pack(anchor='w', padx=15, pady=(2, 0))
-
-            # ---------------- BUTTONS ----------------
-
-            button_frame = ctk.CTkFrame(
-                card,
-                fg_color='transparent'
-            )
-
-            button_frame.pack(
-                anchor='w',
-                padx=15,
-                pady=(10, 12)
-            )
-
-            # COMPLETE BUTTON
-
-            if completed == 0:
-
-                ctk.CTkButton(
-                    button_frame,
-                    text="🍅 Focus",
-                    width=100,
-                    fg_color="#16a34a",
-                    hover_color="#15803d",
-                    command=lambda i=task_id, t=title: self.focus_task(i, t)
-                ).pack(
-                    side="left",
-                    padx=(0,5)
-                )
-
-                ctk.CTkButton(
-                    button_frame,
-                    text="✓ Complete",
-                    width=120,
-                    command=lambda i=task_id: self.complete_task(i)
-                ).pack(
-                    side="left",
-                    padx=(0,5)
-                )
-
-            # EDIT BUTTON
-
-            ctk.CTkButton(
-                button_frame,
-                text='✏ Edit',
-                width=100,
-                fg_color='#2563eb',
-                hover_color='#1d4ed8',
-                command=lambda t=task: self.edit_task(t)
-            ).pack(
-                side='left',
-                padx=5
-            )
-
-            # DELETE BUTTON
-
-            ctk.CTkButton(
-                button_frame,
-                text='🗑 Delete',
-                width=100,
-                fg_color='#c0392b',
-                hover_color='#922b21',
-                command=lambda i=task_id: self.delete_task(i)
-            ).pack(side='left')
-
-        # ======================================================
-        # EMPTY STATE
-        # ======================================================
-
-        if visible == 0:
-
-            ctk.CTkLabel(
-                self.task_container,
-                text='No matching tasks found.',
-                font=('Segoe UI', 18)
-            ).pack(pady=30)
-
-    # ======================================================
-    # FOCUS TASK
-    # ======================================================
-
-    def focus_task(self, task_id, title):
-
-        pomodoro = self.app.pages["Pomodoro"]
-
-        pomodoro.set_current_task(
-            task_id,
-            title
-        )
-
+    def focus_task(self, task_id: int, title: str) -> None:
+        self.app.pomodoro.set_current_task(task_id, title)
         self.app.show_page("Pomodoro")
 
-    # ======================================================
-    # COMPLETE
-    # ======================================================
-
-    def complete_task(self, task_id):
-
-        complete_task(task_id)
-
-        self.load_tasks()
-
-    # ======================================================
-    # DELETE
-    # ======================================================
-
-    def delete_task(self, task_id):
-
-        if not messagebox.askyesno(
-            'Delete Task',
-            'Are you sure you want to delete this task?'
-        ):
+    def delete_task(self, task_id: int, title: str) -> None:
+        if not messagebox.askyesno("Delete task", f"Delete “{title}”? This can't be undone."):
             return
-
-        delete_task(task_id)
-
+        task_service.delete_task(task_id)
         self.load_tasks()
+        self.app.refresh_badges()
+        self.app.toast("Task deleted", "info")
 
-    # ======================================================
-    # EDIT
-    # ======================================================
+    # ------------------------------------------------------------------- listing
 
-    def edit_task(self, task):
+    def load_tasks(self) -> None:
+        for widget in self.container.winfo_children():
+            widget.destroy()
+        rows = task_service.get_tasks(self.search_entry.get(), self.category_filter.get(),
+                                      self.priority_filter.get(), self.status.get())
+        if not rows:
+            filtered = self.search_entry.get() or self.status.get() != "All"
+            empty_state(self.container, "tasks", "No matching tasks" if filtered else "No tasks yet",
+                        "Try a different filter." if filtered else
+                        "Add your first task above, then press Focus to start a session on it.").pack(pady=20)
+            return
+        today = date.today().isoformat()
+        for row in rows:
+            self._row(row, today)
 
+    def _row(self, task, today: str) -> None:
         task_id, title, category, priority, due, completed, pomodoros = task
+        card = Card(self.container, corner_radius=14)
+        card.pack(fill="x", pady=4, padx=2)
+        done_token = "leaf" if completed else "border"
+        check = ctk.CTkButton(card, text="", width=30, height=30, corner_radius=15, hover=False,
+                              image=icon("check", 16, "on_tomato") if completed else None,
+                              fg_color=theme.pair("leaf") if completed else "transparent",
+                              border_width=2, border_color=theme.pair(done_token),
+                              command=lambda i=task_id, c=bool(completed): self.toggle_done(i, c))
+        check.pack(side="left", padx=(14, 10), pady=14)
 
-        window = ctk.CTkToplevel(self)
+        body = ctk.CTkFrame(card, fg_color="transparent")
+        body.pack(side="left", fill="x", expand=True, pady=10)
+        font = ctk.CTkFont(family=theme.font(13)[0], size=13, weight="bold", overstrike=bool(completed))
+        ctk.CTkLabel(body, text=title, font=font, anchor="w",
+                     text_color=theme.pair("muted" if completed else "text")).pack(anchor="w")
+        meta = ctk.CTkFrame(body, fg_color="transparent")
+        meta.pack(anchor="w", pady=(4, 0))
+        Pill(meta, priority, PRIORITY_TOKEN.get(priority, "muted")).pack(side="left")
+        label(meta, category, 11, tone="muted").pack(side="left", padx=(10, 0))
+        if due:
+            overdue = not completed and due < today
+            label(meta, ("Overdue · " if overdue else "Due ") + due, 11, "bold" if overdue else "normal",
+                  tone="danger" if overdue else "muted").pack(side="left", padx=(10, 0))
+        if pomodoros:
+            label(meta, f"{pomodoros} session{'s' if pomodoros != 1 else ''}", 11, tone="muted").pack(side="left", padx=(10, 0))
 
-        window.title('Edit Task')
-        window.geometry('420x330')
-        window.grab_set()
+        actions = ctk.CTkFrame(card, fg_color="transparent")
+        actions.pack(side="right", padx=10)
+        if not completed:
+            Button(actions, "Focus", lambda i=task_id, t=title: self.focus_task(i, t), kind="ghost",
+                   icon_name="play", width=88, height=32).pack(side="left", padx=2)
+        Button(actions, "", lambda t=task: self.edit_task(t), kind="ghost", icon_name="edit", width=34, height=32).pack(side="left", padx=2)
+        Button(actions, "", lambda i=task_id, t=title: self.delete_task(i, t), kind="danger", icon_name="trash", width=34, height=32).pack(side="left", padx=2)
 
-        ctk.CTkLabel(
-            window,
-            text='Edit Task',
-            font=('Segoe UI', 22, 'bold')
-        ).pack(pady=15)
+    # --------------------------------------------------------------------- edit
 
-        title_entry = ctk.CTkEntry(window)
+    def edit_task(self, task) -> None:
+        task_id, title, category, priority, due, completed, pomodoros = task
+        win = ctk.CTkToplevel(self)
+        win.title("Edit task")
+        win.geometry("440x360")
+        win.resizable(False, False)
+        win.configure(fg_color=theme.pair("surface"))
+        win.transient(self.winfo_toplevel())
+        self.after(150, lambda: self._modal(win))
 
-        title_entry.pack(fill='x', padx=25, pady=10)
-
+        label(win, "Edit task", 18, "bold").pack(anchor="w", padx=24, pady=(22, 12))
+        title_entry = entry(win)
+        title_entry.pack(fill="x", padx=24, pady=5)
         title_entry.insert(0, title)
-
-        category_box = ctk.CTkComboBox(
-            window,
-            values=['Study', 'Work', 'Personal', 'Health']
-        )
-
-        category_box.pack(fill='x', padx=25, pady=10)
-
-        category_box.set(category)
-
-        priority_box = ctk.CTkComboBox(
-            window,
-            values=['Low', 'Medium', 'High', 'Urgent']
-        )
-
-        priority_box.pack(fill='x', padx=25, pady=10)
-
-        priority_box.set(priority)
-
-        date_entry = ctk.CTkEntry(window)
-
-        date_entry.pack(fill='x', padx=25, pady=10)
-
-        date_entry.insert(0, due)
+        row = ctk.CTkFrame(win, fg_color="transparent")
+        row.pack(fill="x", padx=24, pady=5)
+        cat = menu(row, config.CATEGORIES, 190)
+        cat.set(category)
+        cat.pack(side="left")
+        pri = menu(row, config.PRIORITIES, 190)
+        pri.set(priority)
+        pri.pack(side="right")
+        due_entry = entry(win, "Due date: YYYY-MM-DD")
+        due_entry.pack(fill="x", padx=24, pady=5)
+        due_entry.insert(0, due or "")
+        error = label(win, "", 11, tone="danger", anchor="w")
+        error.pack(fill="x", padx=26)
 
         def save():
-
-            update_task(
-                task_id,
-                title_entry.get(),
-                category_box.get(),
-                priority_box.get(),
-                date_entry.get()
-            )
-
-            window.destroy()
-
+            try:
+                task_service.update_task(task_id, title_entry.get(), cat.get(), pri.get(), due_entry.get())
+            except ValueError as exc:
+                error.configure(text=str(exc))
+                return
+            win.destroy()
             self.load_tasks()
+            self.app.toast("Task updated", "success")
 
-        ctk.CTkButton(
-            window,
-            text='💾 Save Changes',
-            command=save
-        ).pack(pady=20)
+        buttons = ctk.CTkFrame(win, fg_color="transparent")
+        buttons.pack(side="bottom", fill="x", padx=24, pady=20)
+        Button(buttons, "Save changes", save, kind="primary", width=140).pack(side="right")
+        Button(buttons, "Cancel", win.destroy, kind="ghost", width=100).pack(side="right", padx=8)
+        title_entry.bind("<Return>", lambda e: save())
+
+    @staticmethod
+    def _modal(win) -> None:
+        try:
+            win.grab_set()
+            win.focus_force()
+        except Exception:
+            pass

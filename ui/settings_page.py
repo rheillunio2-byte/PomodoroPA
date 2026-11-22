@@ -1,305 +1,181 @@
+"""Settings.  Switches apply immediately; timer values are saved with a button."""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from tkinter import filedialog, messagebox
+
 import customtkinter as ctk
 
-from tkinter import messagebox
-from services.settings_service import (
-    save_settings,
-    load_settings,
-    save_notification_settings,
-    load_notification_settings
-)
+import config
+from services import data_service, export_service
+from services.notification_service import is_available, notify
+from services.settings_service import get_settings, update_settings
+from services.sound_service import play_success
+from ui import theme
+from ui.pages_base import BasePage
+from ui.widgets.components import Button, Card, Stepper, heading, label
+from ui.widgets.cursor_fx import CursorFX
 
-class SettingsPage(ctk.CTkFrame):
+SHORTCUTS = [("Ctrl + K", "Command palette"), ("Ctrl + 1 … 8", "Switch page"), ("Ctrl + N", "New task"),
+             ("Space", "Start / pause timer"), ("R", "Reset timer phase"), ("S", "Skip to next phase")]
 
-    def __init__(self, parent):
 
-        super().__init__(parent)
+class SettingsPage(BasePage):
+    title = "Settings"
 
-        title = ctk.CTkLabel(
-            self,
-            text="⚙️ Settings",
-            font=("Segoe UI", 32, "bold")
-        )
+    def __init__(self, parent, app):
+        super().__init__(parent, app)
+        body = self.scroller()
+        s = get_settings()
 
-        title.pack(
-            anchor="w",
-            padx=25,
-            pady=(20,15)
-        )
+        # ---- appearance -----------------------------------------------------------
+        card = self._section(body, "Appearance", "Theme and motion.")
+        row = self._row(card, "Theme")
+        self.theme_picker = ctk.CTkSegmentedButton(
+            row, values=["Dark", "Light", "System"], command=lambda v: self._apply(theme=v), height=34,
+            corner_radius=10, font=theme.font(12, "bold"), fg_color=theme.pair("surface2"),
+            unselected_color=theme.pair("surface2"), unselected_hover_color=theme.pair("surface3"),
+            selected_color=theme.pair("tomato"), selected_hover_color=theme.pair("tomato_hi"),
+            text_color=theme.pair("text"))
+        self.theme_picker.set(s["theme"])
+        self.theme_picker.pack(side="right")
+        self.anim_switch = self._switch(card, "Animations", "Dock magnification, text effects and transitions.",
+                                        s["animations"], lambda v: self._apply(animations=v))
+        supported = CursorFX.supported()
+        self.cursor_switch = self._switch(
+            card, "Cursor effects", "A glowing trail, magnetic ring and click ripples." if supported
+            else "Available on Windows only.", s["cursor_fx"] and supported, lambda v: self._apply(cursor_fx=v))
+        if not supported:
+            self.cursor_switch.configure(state="disabled")
 
-        self.scroll = ctk.CTkScrollableFrame(
-            self,
-            fg_color="transparent"
-        )
+        # ---- timer ----------------------------------------------------------------
+        card = self._section(body, "Timer", "Durations are in minutes. Changes apply to the next phase.")
+        self.steppers = {}
+        for key, name, low, high, suffix in (("work_minutes", "Focus", 1, 180, " min"), ("short_break", "Short break", 1, 60, " min"),
+                                             ("long_break", "Long break", 1, 120, " min"),
+                                             ("long_break_every", "Long break after", 1, 30, " sessions"),
+                                             ("daily_goal", "Daily goal", 1, 24, " sessions")):
+            row = self._row(card, name)
+            stepper = Stepper(row, s[key], low, high, suffix)
+            stepper.pack(side="right")
+            self.steppers[key] = stepper
+        self.auto_switch = self._switch(card, "Start the next phase automatically",
+                                        "Roll from focus into break (and back) without pressing Start.",
+                                        s["auto_start"], lambda v: self._apply(auto_start=v))
+        Button(card, "Save timer settings", self.save_timer, kind="primary", width=190).pack(anchor="w", padx=20, pady=(6, 18))
 
-        self.scroll.pack(
-            fill="both",
-            expand=True,
-            padx=20,
-            pady=10
-        )
+        # ---- notifications --------------------------------------------------------
+        card = self._section(body, "Notifications", "Alerts when a session or break ends.")
+        self.notify_switch = self._switch(card, "Desktop notifications",
+                                          "Shown by your system." if is_available() else
+                                          "Install the optional 'plyer' package to enable these.",
+                                          s["notifications"], lambda v: self._apply(notifications=v))
+        self.sound_switch = self._switch(card, "Sound", "A short chime when a phase ends.", s["sounds"],
+                                         lambda v: self._apply(sounds=v))
+        tests = ctk.CTkFrame(card, fg_color="transparent")
+        tests.pack(anchor="w", padx=20, pady=(4, 18))
+        Button(tests, "Test sound", lambda: play_success(force=True), kind="ghost", width=120).pack(side="left")
+        Button(tests, "Test notification", lambda: notify("FocusFlow", "This is a test notification.", force=True),
+               kind="ghost", width=160).pack(side="left", padx=8)
 
-        self.build_appearance()
+        # ---- data -----------------------------------------------------------------
+        card = self._section(body, "Your data", f"Stored locally in {config.DB_PATH}")
+        actions = ctk.CTkFrame(card, fg_color="transparent")
+        actions.pack(anchor="w", padx=20, pady=(0, 18))
+        Button(actions, "Export sessions", lambda: self._export(export_service.export_sessions_csv, "focusflow_sessions.csv"),
+               kind="ghost", icon_name="download", width=160).pack(side="left")
+        Button(actions, "Export tasks", lambda: self._export(export_service.export_tasks_csv, "focusflow_tasks.csv"),
+               kind="ghost", icon_name="download", width=140).pack(side="left", padx=8)
+        Button(actions, "Open data folder", self.open_folder, kind="ghost", icon_name="folder", width=160).pack(side="left")
+        Button(actions, "Reset all data…", self.reset_data, kind="danger", icon_name="trash", width=160).pack(side="left", padx=8)
 
-        self.build_pomodoro()
+        # ---- shortcuts ------------------------------------------------------------
+        card = self._section(body, "Keyboard shortcuts", "")
+        for keys, what in SHORTCUTS:
+            row = ctk.CTkFrame(card, fg_color="transparent")
+            row.pack(fill="x", padx=20, pady=2)
+            label(row, keys, 12, "bold", tone="tomato", anchor="w", width=130).pack(side="left")
+            label(row, what, 12, tone="muted", anchor="w").pack(side="left")
+        ctk.CTkFrame(card, height=14, fg_color="transparent").pack()
 
-        self.build_notifications()
+    # ---------------------------------------------------------------- layout helpers
 
-        self.build_data()
+    def _section(self, parent, title: str, hint: str) -> Card:
+        card = Card(parent)
+        card.pack(fill="x", pady=(0, 14))
+        heading(card, title, 16).pack(anchor="w", padx=20, pady=(16, 0))
+        if hint:
+            label(card, hint, 11, tone="muted", anchor="w", wraplength=760, justify="left").pack(anchor="w", padx=20, pady=(0, 10))
+        return card
 
-        self.build_preferences()
+    def _row(self, card, name: str) -> ctk.CTkFrame:
+        """A "label on the left" row; build the control with the returned frame as parent."""
+        row = ctk.CTkFrame(card, fg_color="transparent")
+        row.pack(fill="x", padx=20, pady=5)
+        label(row, name, 13, anchor="w").pack(side="left")
+        return row
 
-    def build_appearance(self):
+    def _switch(self, card, title: str, hint: str, value, command) -> ctk.CTkSwitch:
+        row = ctk.CTkFrame(card, fg_color="transparent")
+        row.pack(fill="x", padx=20, pady=6)
+        text = ctk.CTkFrame(row, fg_color="transparent")
+        text.pack(side="left")
+        label(text, title, 13, anchor="w").pack(anchor="w")
+        label(text, hint, 11, tone="muted", anchor="w").pack(anchor="w")
+        switch = ctk.CTkSwitch(row, text="", width=46, progress_color=theme.pair("tomato"),
+                               fg_color=theme.pair("surface3"), button_color=theme.pair("text"))
+        switch.configure(command=lambda: command(switch.get()))
+        switch.select() if value else switch.deselect()
+        switch.pack(side="right")
+        return switch
 
-        frame = ctk.CTkFrame(self.scroll)
+    # -------------------------------------------------------------------- behaviour
 
-        frame.pack(
-            fill="x",
-            pady=10
-        )
-
-        ctk.CTkLabel(
-            frame,
-            text="🎨 Appearance",
-            font=("Segoe UI",22,"bold")
-        ).pack(
-            anchor="w",
-            padx=20,
-            pady=(15,10)
-        )
-
-        self.mode = ctk.CTkComboBox(
-            frame,
-            values=[
-                "System",
-                "Dark",
-                "Light"
-            ],
-            width=180,
-            command=self.change_mode
-        )
-
-        self.mode.set("Dark")
-
-        self.mode.pack(
-            anchor="w",
-            padx=20,
-            pady=(0,20)
-        )
-
-    def change_mode(self, mode):
-
-        ctk.set_appearance_mode(mode)
-
-    def save_pomodoro_settings(self):
-
+    def _apply(self, **changes) -> None:
         try:
-
-            work = int(self.work_entry.get())
-            short = int(self.short_entry.get())
-            long_break = int(self.long_entry.get())
-            interval = int(self.interval_entry.get())
-
-        except ValueError:
-
-            messagebox.showerror(
-                "Invalid Input",
-                "Please enter whole numbers only."
-            )
-
+            update_settings(**changes)
+        except ValueError as error:
+            self.app.toast(str(error), "error")
             return
+        self.app.apply_settings()
 
-        if work <= 0 or short <= 0 or long_break <= 0 or interval <= 0:
-
-            messagebox.showwarning(
-                "Invalid Values",
-                "All values must be greater than zero."
-            )
-
+    def save_timer(self) -> None:
+        try:
+            update_settings(**{key: stepper.get() for key, stepper in self.steppers.items()})
+        except ValueError as error:
+            self.app.toast(str(error), "error")
             return
+        self.app.apply_settings()
+        self.app.toast("Timer settings saved", "success")
 
-        if work > 180 or short > 60 or long_break > 120:
+    def _export(self, writer, name: str) -> None:
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV file", "*.csv")], initialfile=name)
+        if path:
+            try:
+                count = writer(path)
+            except OSError as error:
+                self.app.toast(f"Couldn't save the file: {error.strerror or error}", "error")
+                return
+            self.app.toast(f"Exported {count} rows", "success")
 
-            messagebox.showwarning(
-                "Too Large",
-                "Please enter realistic Pomodoro durations."
-            )
+    def open_folder(self) -> None:
+        folder = data_service.data_folder()
+        try:
+            if sys.platform == "win32":
+                os.startfile(folder)                                    # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.run(["open", folder], check=False)
+            else:
+                subprocess.run(["xdg-open", folder], check=False)
+        except Exception as error:
+            self.app.toast(f"Couldn't open the folder: {error}", "error")
 
+    def reset_data(self) -> None:
+        if not messagebox.askyesno("Reset all data", "Delete every task and every logged session?\n"
+                                   "Your settings are kept. This can't be undone."):
             return
-
-        save_settings(
-            work,
-            short,
-            long_break,
-            interval
-        )
-
-        messagebox.showinfo(
-            "Success",
-            "Pomodoro settings saved successfully!"
-        )
-
-    def save_notification_preferences(self):
-
-        save_notification_settings(
-
-            self.notification_switch.get(),
-
-            self.sound_switch.get()
-
-        )
-
-        messagebox.showinfo(
-            "Success",
-            "Notification settings saved."
-        )
-
-    def build_pomodoro(self):
-
-        frame = ctk.CTkFrame(self.scroll)
-
-        frame.pack(
-            fill="x",
-            pady=10
-        )
-
-        ctk.CTkLabel(
-            frame,
-            text="🍅 Pomodoro Settings",
-            font=("Segoe UI",22,"bold")
-        ).pack(
-            anchor="w",
-            padx=20,
-            pady=(15,15)
-        )
-
-        # Work Duration
-
-        ctk.CTkLabel(
-            frame,
-            text="Work Duration (minutes)"
-        ).pack(anchor="w", padx=20)
-
-        self.work_entry = ctk.CTkEntry(frame, width=120)
-
-        self.work_entry.pack(anchor="w", padx=20, pady=(5,10))
-
-        # Short Break
-
-        ctk.CTkLabel(
-            frame,
-            text="Short Break (minutes)"
-        ).pack(anchor="w", padx=20)
-
-        self.short_entry = ctk.CTkEntry(frame, width=120)
-
-        self.short_entry.pack(anchor="w", padx=20, pady=(5,10))
-
-        # Long Break
-
-        ctk.CTkLabel(
-            frame,
-            text="Long Break (minutes)"
-        ).pack(anchor="w", padx=20)
-
-        self.long_entry = ctk.CTkEntry(frame, width=120)
-
-        self.long_entry.pack(anchor="w", padx=20, pady=(5,10))
-
-        # Long Break Every
-
-        ctk.CTkLabel(
-            frame,
-            text="Long Break Every"
-        ).pack(anchor="w", padx=20)
-
-        self.interval_entry = ctk.CTkEntry(frame, width=120)
-
-        self.interval_entry.pack(anchor="w", padx=20, pady=(5,20))
-
-        work, short, long_break, interval = load_settings()
-
-        self.work_entry.insert(0, str(work))
-
-        self.short_entry.insert(0, str(short))
-
-        self.long_entry.insert(0, str(long_break))
-
-        self.interval_entry.insert(0, str(interval))
-
-        ctk.CTkButton(
-            frame,
-            text="💾 Save Pomodoro Settings",
-            command=self.save_pomodoro_settings
-        ).pack(
-            padx=20,
-            pady=(0,20),
-            anchor="w"
-        )
-
-
-    def build_notifications(self):
-
-        frame = ctk.CTkFrame(self.scroll)
-
-        frame.pack(
-            fill="x",
-            pady=10
-        )
-
-        ctk.CTkLabel(
-            frame,
-            text="🔔 Notifications",
-            font=("Segoe UI",22,"bold")
-        ).pack(
-            anchor="w",
-            padx=20,
-            pady=(15,15)
-        )
-
-        notifications, sounds = load_notification_settings()
-
-        self.notification_switch = ctk.CTkSwitch(
-            frame,
-            text="Enable Desktop Notifications"
-        )
-
-        if notifications:
-            self.notification_switch.select()
-
-        self.notification_switch.pack(
-            anchor="w",
-            padx=20,
-            pady=8
-        )
-
-        self.sound_switch = ctk.CTkSwitch(
-            frame,
-            text="Enable Sound Effects"
-        )
-
-        if sounds:
-            self.sound_switch.select()
-
-        self.sound_switch.pack(
-            anchor="w",
-            padx=20,
-            pady=8
-        )
-
-        ctk.CTkButton(
-            frame,
-            text="💾 Save Notification Settings",
-            command=self.save_notification_preferences
-        ).pack(
-            anchor="w",
-            padx=20,
-            pady=(15,20)
-        )
-
-
-    def build_data(self):
-        pass
-
-
-    def build_preferences(self):
-        pass
+        data_service.reset_all_data()
+        self.app.refresh_badges()
+        self.app.toast("All tasks and sessions deleted", "info")

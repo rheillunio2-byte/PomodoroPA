@@ -1,81 +1,34 @@
-import sqlite3
+"""Finished sessions, newest first."""
+from __future__ import annotations
 
-DB = "database/focusflow.db"
+from services import db
+from services._ranges import start_date
 
-def get_history(filter_type="All Time"):
 
-    conn = sqlite3.connect(DB)
-    cursor = conn.cursor()
+def get_history(filter_type: str = "All Time", search: str = "",
+                session_type: str = "All") -> list[tuple]:
+    """Return ``(completed_at, minutes, session_type, task_title)`` rows.
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS sessions(
-
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-        completed_at TEXT,
-
-        minutes INTEGER,
-
-        session_type TEXT DEFAULT 'Work'
-
-    )
-    """)
-
-    cursor.execute("PRAGMA table_info(sessions)")
-    columns = [row[1] for row in cursor.fetchall()]
-
-    if "session_type" not in columns:
-        cursor.execute("""
-            ALTER TABLE sessions
-            ADD COLUMN session_type TEXT DEFAULT 'Work'
-        """)
-        conn.commit()
-
-    from datetime import datetime, timedelta
-
-    today = datetime.today()
-
-    if filter_type == "Today":
-
-        cursor.execute("""
-            SELECT completed_at, minutes, session_type
-            FROM sessions
-            WHERE DATE(completed_at)=DATE('now')
-            ORDER BY id DESC
-        """)
-
-    elif filter_type == "This Week":
-
-        week = (today - timedelta(days=7)).strftime("%Y-%m-%d")
-
-        cursor.execute("""
-            SELECT completed_at, minutes, session_type
-            FROM sessions
-            WHERE completed_at>=?
-            ORDER BY id DESC
-        """, (week,))
-
-    elif filter_type == "This Month":
-
-        month = today.strftime("%Y-%m")
-
-        cursor.execute("""
-            SELECT completed_at, minutes, session_type
-            FROM sessions
-            WHERE completed_at LIKE ?
-            ORDER BY id DESC
-        """, (month + "%",))
-
-    else:
-
-        cursor.execute("""
-            SELECT completed_at, minutes, session_type
-            FROM sessions
-            ORDER BY id DESC
-        """)
-
-    rows = cursor.fetchall()
-
-    conn.close()
-
-    return rows
+    ``filter_type``: ``All Time`` / ``Today`` / ``This Week`` / ``This Month``.
+    ``session_type``: ``All`` / ``Work`` / ``Breaks``.
+    The old query compared against SQLite's UTC ``DATE('now')`` while sessions
+    are stored in local time, so "Today" was wrong around midnight.
+    """
+    clauses, params = [], []
+    since = start_date(filter_type)
+    if since:
+        clauses.append("substr(s.completed_at,1,10)>=?")
+        params.append(since)
+    if session_type == "Work":
+        clauses.append("s.session_type='Work'")
+    elif session_type == "Breaks":
+        clauses.append("s.session_type!='Work'")
+    if search.strip():
+        clauses.append("(s.completed_at LIKE ? OR s.session_type LIKE ? OR IFNULL(t.title,'') LIKE ?)")
+        params += [f"%{search.strip()}%"] * 3
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    with db.connect() as conn:
+        return conn.execute(
+            f"""SELECT s.completed_at, s.minutes, s.session_type, t.title
+                FROM sessions s LEFT JOIN tasks t ON t.id = s.task_id
+                {where} ORDER BY s.id DESC""", params).fetchall()
